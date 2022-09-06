@@ -1,6 +1,7 @@
 package kbucket
 
 import (
+	"crypto/sha256"
 	"math/rand"
 	"testing"
 	"time"
@@ -729,6 +730,32 @@ func TestPeerRemovedNotificationWhenPeerIsEvicted(t *testing.T) {
 	require.True(t, b)
 	require.Contains(t, pset, p2)
 	require.NotContains(t, pset, p1)
+}
+
+func TestTable_NearestPeerToPrefix(t *testing.T) {
+	local := test.RandPeerIDFatal(t)
+	m := pstore.NewMetrics()
+	rt, err := NewRoutingTable(10, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+	require.NoError(t, err)
+
+	require.Empty(t, rt.GetPeerInfos())
+
+	const totalPeers = 10
+	for i := 0; i < totalPeers; i++ {
+		p := test.RandPeerIDFatal(t)
+		b, err := rt.TryAddPeer(p, true, false)
+		require.True(t, b)
+		require.NoError(t, err)
+	}
+
+	testID := sha256.Sum256([]byte("test"))
+	expected := rt.NearestPeer(testID[:])
+	res := rt.NearestPeerToPrefix(testID[:])
+	require.Equal(t, expected, res)
+
+	res = rt.NearestPeerToPrefix(testID[:1])
+	t.Log(res)
+	t.Log(expected)
 }
 
 func BenchmarkAddPeer(b *testing.B) {
