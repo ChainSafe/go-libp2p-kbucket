@@ -771,12 +771,16 @@ func TestTable_NearestPeersToPrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, rt.GetPeerInfos())
 
+	// try adding a bunch of peers - not all will end up in the routing table,
+	// but there should be 4+ buckets after this
 	const totalPeers = 100
 	for i := 0; i < totalPeers; i++ {
 		p := test.RandPeerIDFatal(t)
 		_, err := rt.TryAddPeer(p, true, true)
 		require.NoError(t, err)
 	}
+
+	require.GreaterOrEqual(t, len(rt.buckets), 4)
 
 	for i := 0; i < len(rt.buckets)+2; i++ {
 		testID := testContentIDWithCPL(t, localID, i)
