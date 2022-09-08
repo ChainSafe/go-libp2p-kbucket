@@ -734,36 +734,33 @@ func TestPeerRemovedNotificationWhenPeerIsEvicted(t *testing.T) {
 
 func testContentIDWithCPL(t *testing.T, hashedLocalID []byte, cpl int) []byte {
 	// TODO: for now assume cpl < 8
-	localNegated := ^hashedLocalID[0]
-	t.Logf("%08b\n", localNegated)
+	require.LessOrEqual(t, cpl, 8)
+
+	firstByte := ^hashedLocalID[0]
 
 	for i := 0; i < cpl; i++ {
 		bitmask := byte(^(1 << (7 - i)))
-		//t.Logf("%08b\n", bitmask)
-		localNegated &= byte(bitmask)
+		firstByte &= byte(bitmask)
 	}
-	require.GreaterOrEqual(t, bits.LeadingZeros8(localNegated), cpl)
-
-	t.Logf("%08b\n", hashedLocalID[0])
-	t.Logf("%08b\n", localNegated)
+	require.GreaterOrEqual(t, bits.LeadingZeros8(firstByte), cpl)
 
 	for i := 0; i < cpl; i++ {
-		bitmask := ^(1 << (255 - i))
-		localBit := hashedLocalID[0] & byte(bitmask)
-		localNegated = localNegated ^ localBit
+		bitmask := byte((1 << (7 - i)))
+		idBit := hashedLocalID[0] & byte(bitmask)
+		firstByte = firstByte | idBit
 	}
 
-	t.Logf("%08b\n", localNegated)
-
-	res := [32]byte{localNegated}
+	res := [32]byte{firstByte, ^hashedLocalID[1]}
 	return res[:]
 }
 
 func TestContentIDWithCPL(t *testing.T) {
-	local := test.RandPeerIDFatal(t)
-	localID := ConvertPeerID(local)
-	res := testContentIDWithCPL(t, localID, 3)
-	require.Equal(t, 3, CommonPrefixLen(localID, res))
+	for i := 0; i < 9; i++ {
+		local := test.RandPeerIDFatal(t)
+		localID := ConvertPeerID(local)
+		res := testContentIDWithCPL(t, localID, i)
+		require.Equal(t, i, CommonPrefixLen(localID, res))
+	}
 }
 
 func TestTable_NearestPeerToPrefix(t *testing.T) {
