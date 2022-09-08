@@ -1,7 +1,7 @@
 package kbucket
 
 import (
-	"crypto/sha256"
+	"math/bits"
 	"math/rand"
 	"testing"
 	"time"
@@ -732,30 +732,76 @@ func TestPeerRemovedNotificationWhenPeerIsEvicted(t *testing.T) {
 	require.NotContains(t, pset, p1)
 }
 
+func testContentIDWithCPL(t *testing.T, hashedLocalID []byte, cpl int) []byte {
+	// TODO: for now assume cpl < 8
+	localNegated := ^hashedLocalID[0]
+	t.Logf("%08b\n", localNegated)
+
+	for i := 0; i < cpl; i++ {
+		bitmask := byte(^(1 << (7 - i)))
+		//t.Logf("%08b\n", bitmask)
+		localNegated &= byte(bitmask)
+	}
+	require.GreaterOrEqual(t, bits.LeadingZeros8(localNegated), cpl)
+
+	t.Logf("%08b\n", hashedLocalID[0])
+	t.Logf("%08b\n", localNegated)
+
+	for i := 0; i < cpl; i++ {
+		bitmask := ^(1 << (255 - i))
+		localBit := hashedLocalID[0] & byte(bitmask)
+		localNegated = localNegated ^ localBit
+	}
+
+	t.Logf("%08b\n", localNegated)
+
+	res := [32]byte{localNegated}
+	return res[:]
+}
+
+func TestContentIDWithCPL(t *testing.T) {
+	local := test.RandPeerIDFatal(t)
+	localID := ConvertPeerID(local)
+	res := testContentIDWithCPL(t, localID, 3)
+	require.Equal(t, 3, CommonPrefixLen(localID, res))
+}
+
 func TestTable_NearestPeerToPrefix(t *testing.T) {
 	local := test.RandPeerIDFatal(t)
 	m := pstore.NewMetrics()
-	rt, err := NewRoutingTable(10, ConvertPeerID(local), time.Hour, m, NoOpThreshold, nil)
+	localID := ConvertPeerID(local)
+	rt, err := NewRoutingTable(10, localID, time.Hour, m, NoOpThreshold, nil)
 	require.NoError(t, err)
 
 	require.Empty(t, rt.GetPeerInfos())
 
-	const totalPeers = 10
+	const totalPeers = 100
 	for i := 0; i < totalPeers; i++ {
 		p := test.RandPeerIDFatal(t)
-		b, err := rt.TryAddPeer(p, true, false)
-		require.True(t, b)
+		_, err := rt.TryAddPeer(p, true, true)
+		//require.True(t, b)
 		require.NoError(t, err)
 	}
 
-	testID := sha256.Sum256([]byte("test"))
-	expected := rt.NearestPeer(testID[:])
-	res := rt.NearestPeerToPrefix(testID[:])
+	t.Log(len(rt.buckets))
+	t.Log(rt.Size())
+
+	testID := testContentIDWithCPL(t, localID, len(rt.buckets)/2)
+
+	expected := rt.NearestPeer(testID)
+	res := rt.NearestPeerToPrefix(testID)
 	require.Equal(t, expected, res)
 
 	res = rt.NearestPeerToPrefix(testID[:1])
 	t.Log(res)
 	t.Log(expected)
+
+	expectedPeers := rt.NearestPeers(testID, 20)
+	t.Log(expectedPeers)
+
+	resPeers := rt.NearestPeersToPrefix(testID[:1], 20)
+	t.Log(resPeers)
+	require.Contains(t, resPeers, expected)
 }
 
 func BenchmarkAddPeer(b *testing.B) {

@@ -391,6 +391,7 @@ func (rt *RoutingTable) NearestPeer(id ID) peer.ID {
 func (rt *RoutingTable) NearestPeersToPrefix(prefix ID, count int) []peer.ID {
 	prefixLen := len(prefix)
 	cpl := CommonPrefixLen(prefix, rt.local[:prefixLen])
+	fmt.Println("NearestPeersToPrefix cpl", cpl)
 	return rt.nearestPeers(cpl, prefix, count)
 }
 
@@ -401,6 +402,7 @@ func (rt *RoutingTable) NearestPeers(id ID, count int) []peer.ID {
 	// bits with the given key. +1 because both the target and all peers in
 	// this bucket differ from us in the cpl bit.
 	cpl := CommonPrefixLen(id, rt.local)
+	fmt.Println("NearestPeers cpl", cpl)
 	return rt.nearestPeers(cpl, id, count)
 }
 
@@ -448,6 +450,7 @@ func (rt *RoutingTable) nearestPeers(cpl int, id ID, count int) []peer.ID {
 	rt.tabLock.RUnlock()
 
 	// Sort by distance to local peer
+	// TODO: doesn't this actually sort by distance to the target ID?
 	pds.sort()
 
 	if count < pds.Len() {
