@@ -763,42 +763,37 @@ func TestContentIDWithCPL(t *testing.T) {
 	}
 }
 
-func TestTable_NearestPeerToPrefix(t *testing.T) {
+func TestTable_NearestPeersToPrefix(t *testing.T) {
 	local := test.RandPeerIDFatal(t)
 	m := pstore.NewMetrics()
 	localID := ConvertPeerID(local)
 	rt, err := NewRoutingTable(10, localID, time.Hour, m, NoOpThreshold, nil)
 	require.NoError(t, err)
-
 	require.Empty(t, rt.GetPeerInfos())
 
 	const totalPeers = 100
 	for i := 0; i < totalPeers; i++ {
 		p := test.RandPeerIDFatal(t)
 		_, err := rt.TryAddPeer(p, true, true)
-		//require.True(t, b)
 		require.NoError(t, err)
 	}
 
-	t.Log(len(rt.buckets))
-	t.Log(rt.Size())
+	for i := 0; i < len(rt.buckets)+2; i++ {
+		testID := testContentIDWithCPL(t, localID, i)
 
-	testID := testContentIDWithCPL(t, localID, len(rt.buckets)/2)
+		// base case - no prefix lookup
+		expected := rt.NearestPeer(testID)
+		res := rt.NearestPeerToPrefix(testID)
+		require.Equal(t, expected, res)
 
-	expected := rt.NearestPeer(testID)
-	res := rt.NearestPeerToPrefix(testID)
-	require.Equal(t, expected, res)
+		// todo: test cases for this (varying prefix length)
+		res = rt.NearestPeerToPrefix(testID[:16])
+		require.Contains(t, res, expected)
 
-	res = rt.NearestPeerToPrefix(testID[:1])
-	t.Log(res)
-	t.Log(expected)
-
-	expectedPeers := rt.NearestPeers(testID, 20)
-	t.Log(expectedPeers)
-
-	resPeers := rt.NearestPeersToPrefix(testID[:1], 20)
-	t.Log(resPeers)
-	require.Contains(t, resPeers, expected)
+		// list of nearest peers to prefix(ID) should contain the actual nearest peer to the ID
+		resPeers := rt.NearestPeersToPrefix(testID[:1], 10)
+		require.Contains(t, resPeers, expected)
+	}
 }
 
 func BenchmarkAddPeer(b *testing.B) {
