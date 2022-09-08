@@ -11,7 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 
-	"github.com/libp2p/go-libp2p-kbucket/peerdiversity"
+	"github.com/ChainSafe/go-libp2p-kbucket/peerdiversity"
 
 	logging "github.com/ipfs/go-log"
 )
@@ -366,6 +366,16 @@ func (rt *RoutingTable) Find(id peer.ID) peer.ID {
 	return srch[0]
 }
 
+func (rt *RoutingTable) NearestPeerToPrefix(id ID) peer.ID {
+	peers := rt.NearestPeersToPrefix(id, 1)
+	if len(peers) > 0 {
+		return peers[0]
+	}
+
+	log.Debugf("NearestPeer: Returning nil, table size = %d", rt.Size())
+	return ""
+}
+
 // NearestPeer returns a single peer that is nearest to the given ID
 func (rt *RoutingTable) NearestPeer(id ID) peer.ID {
 	peers := rt.NearestPeers(id, 1)
@@ -377,6 +387,13 @@ func (rt *RoutingTable) NearestPeer(id ID) peer.ID {
 	return ""
 }
 
+// NearestPeers returns a list of the 'count' closest peers to the given prefix
+func (rt *RoutingTable) NearestPeersToPrefix(prefix ID, count int) []peer.ID {
+	prefixLen := len(prefix)
+	cpl := CommonPrefixLen(prefix, rt.local[:prefixLen])
+	return rt.nearestPeers(cpl, prefix, count)
+}
+
 // NearestPeers returns a list of the 'count' closest peers to the given ID
 func (rt *RoutingTable) NearestPeers(id ID, count int) []peer.ID {
 	// This is the number of bits _we_ share with the key. All peers in this
@@ -384,7 +401,10 @@ func (rt *RoutingTable) NearestPeers(id ID, count int) []peer.ID {
 	// bits with the given key. +1 because both the target and all peers in
 	// this bucket differ from us in the cpl bit.
 	cpl := CommonPrefixLen(id, rt.local)
+	return rt.nearestPeers(cpl, id, count)
+}
 
+func (rt *RoutingTable) nearestPeers(cpl int, id ID, count int) []peer.ID {
 	// It's assumed that this also protects the buckets.
 	rt.tabLock.RLock()
 
@@ -428,6 +448,7 @@ func (rt *RoutingTable) NearestPeers(id ID, count int) []peer.ID {
 	rt.tabLock.RUnlock()
 
 	// Sort by distance to local peer
+	// TODO: doesn't this actually sort by distance to the target ID?
 	pds.sort()
 
 	if count < pds.Len() {

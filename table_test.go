@@ -1,6 +1,7 @@
 package kbucket
 
 import (
+	"math/bits"
 	"math/rand"
 	"testing"
 	"time"
@@ -8,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
 
-	"github.com/libp2p/go-libp2p-kbucket/peerdiversity"
+	"github.com/ChainSafe/go-libp2p-kbucket/peerdiversity"
 	pstore "github.com/libp2p/go-libp2p/p2p/host/peerstore"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -729,6 +730,74 @@ func TestPeerRemovedNotificationWhenPeerIsEvicted(t *testing.T) {
 	require.True(t, b)
 	require.Contains(t, pset, p2)
 	require.NotContains(t, pset, p1)
+}
+
+func testContentIDWithCPL(t *testing.T, hashedLocalID []byte, cpl int) []byte {
+	// TODO: for now assume cpl < 8
+	require.LessOrEqual(t, cpl, 8)
+
+	firstByte := ^hashedLocalID[0]
+
+	for i := 0; i < cpl; i++ {
+		bitmask := byte(^(1 << (7 - i)))
+		firstByte &= byte(bitmask)
+	}
+	require.GreaterOrEqual(t, bits.LeadingZeros8(firstByte), cpl)
+
+	for i := 0; i < cpl; i++ {
+		bitmask := byte((1 << (7 - i)))
+		idBit := hashedLocalID[0] & byte(bitmask)
+		firstByte = firstByte | idBit
+	}
+
+	res := [32]byte{firstByte, ^hashedLocalID[1]}
+	return res[:]
+}
+
+func TestContentIDWithCPL(t *testing.T) {
+	for i := 0; i < 9; i++ {
+		local := test.RandPeerIDFatal(t)
+		localID := ConvertPeerID(local)
+		res := testContentIDWithCPL(t, localID, i)
+		require.Equal(t, i, CommonPrefixLen(localID, res))
+	}
+}
+
+func TestTable_NearestPeersToPrefix(t *testing.T) {
+	local := test.RandPeerIDFatal(t)
+	m := pstore.NewMetrics()
+	localID := ConvertPeerID(local)
+	rt, err := NewRoutingTable(10, localID, time.Hour, m, NoOpThreshold, nil)
+	require.NoError(t, err)
+	require.Empty(t, rt.GetPeerInfos())
+
+	// try adding a bunch of peers - not all will end up in the routing table,
+	// but there should be 4+ buckets after this
+	const totalPeers = 100
+	for i := 0; i < totalPeers; i++ {
+		p := test.RandPeerIDFatal(t)
+		_, err := rt.TryAddPeer(p, true, true)
+		require.NoError(t, err)
+	}
+
+	require.GreaterOrEqual(t, len(rt.buckets), 4)
+
+	for i := 0; i < len(rt.buckets)+2; i++ {
+		testID := testContentIDWithCPL(t, localID, i)
+
+		// base case - no prefix lookup
+		expected := rt.NearestPeer(testID)
+		res := rt.NearestPeerToPrefix(testID)
+		require.Equal(t, expected, res)
+
+		// todo: test cases for this (varying prefix length)
+		res = rt.NearestPeerToPrefix(testID[:16])
+		require.Contains(t, res, expected)
+
+		// list of nearest peers to prefix(ID) should contain the actual nearest peer to the ID
+		resPeers := rt.NearestPeersToPrefix(testID[:1], 10)
+		require.Contains(t, resPeers, expected)
+	}
 }
 
 func BenchmarkAddPeer(b *testing.B) {
