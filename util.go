@@ -5,7 +5,7 @@ import (
 
 	"github.com/minio/sha256-simd"
 
-	ks "github.com/ChainSafe/go-libp2p-kbucket/keyspace"
+	ks "github.com/libp2p/go-libp2p-kbucket/keyspace"
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	u "github.com/ipfs/go-ipfs-util"

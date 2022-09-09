@@ -1,4 +1,4 @@
-module github.com/ChainSafe/go-libp2p-kbucket
+module github.com/libp2p/go-libp2p-kbucket
 
 go 1.18
 
